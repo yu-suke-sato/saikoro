@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>さいころ投げシミュレーター</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        body {
+            background-color: #1a202c;
+            color: #e2e8f0;
+            font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+
+        .dice-scene {
+            perspective: 1000px;
+            margin: 0 auto;
+            width: 80px;
+            height: 80px;
+        }
+
+        .dice-inner {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transition: transform 2.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+            transform-style: preserve-3d;
+            border-radius: 12px;
+            box-shadow: 0 8px 12px -2px rgba(0, 0, 0, 0.5);
+            background-color: #ffffff;
+        }
+
+        .dice-face {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #ffffff 0%, #e0e0e0 100%);
+            border: 2px solid #ccc;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.1);
+        }
+
+        .dot {
+            width: 16px;
+            height: 16px;
+            background-color: #333;
+            border-radius: 50%;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.4);
+        }
+        
+        .dot.red {
+            background-color: #e53e3e;
+        }
+
+        /* さいころの目のレイアウト */
+        .face-1 { grid-template-columns: 1fr; grid-template-rows: 1fr; place-items: center; display: grid; }
+        .face-2 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; display: grid; padding: 12px; }
+        .face-2 .dot:nth-child(1) { align-self: start; justify-self: start; }
+        .face-2 .dot:nth-child(2) { align-self: end; justify-self: end; }
+        .face-3 { grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; display: grid; padding: 8px; }
+        .face-3 .dot:nth-child(1) { align-self: start; justify-self: start; }
+        .face-3 .dot:nth-child(2) { align-self: center; justify-self: center; grid-column: 2; grid-row: 2; }
+        .face-3 .dot:nth-child(3) { align-self: end; justify-self: end; grid-column: 3; grid-row: 3; }
+        .face-4 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; display: grid; padding: 12px; gap: 16px; }
+        .face-5 { grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; display: grid; padding: 8px; }
+        .face-5 .dot:nth-child(1) { align-self: start; justify-self: start; grid-column: 1; grid-row: 1; }
+        .face-5 .dot:nth-child(2) { align-self: start; justify-self: end; grid-column: 3; grid-row: 1; }
+        .face-5 .dot:nth-child(3) { align-self: center; justify-self: center; grid-column: 2; grid-row: 2; }
+        .face-5 .dot:nth-child(4) { align-self: end; justify-self: start; grid-column: 1; grid-row: 3; }
+        .face-5 .dot:nth-child(5) { align-self: end; justify-self: end; grid-column: 3; grid-row: 3; }
+        .face-6 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; display: grid; padding: 10px 12px; gap: 6px 16px; }
+
+        .is-rolling {
+            animation: jumpRoll 1.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+        }
+
+        @keyframes jumpRoll {
+            0% { top: 0; box-shadow: 0 8px 12px -2px rgba(0, 0, 0, 0.5); transform: rotate(0deg) scale(1); }
+            50% { top: -80px; box-shadow: 0 30px 20px -4px rgba(0, 0, 0, 0.4); transform: rotate(360deg) scale(1.1); }
+            100% { top: 0; box-shadow: 0 8px 12px -2px rgba(0, 0, 0, 0.5); transform: rotate(720deg) scale(1); }
+        }
+
+        .dice-grid {
+            display: flex;
+            gap: 1.5rem;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+            width: 100%;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 1rem;
+        }
+
+        .fade-in {
+            animation: fadeIn 0.4s ease-in-out forwards;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .chart-wrapper {
+            position: relative;
+            width: 100%;
+            height: 320px;
+        }
+    </style>
+</head>
+<body>
+    <header class="w-full flex justify-end p-4 absolute top-0 z-10 pointer-events-none">
+        <div class="flex items-center gap-3 bg-gray-800/90 p-3 rounded-xl border border-gray-700 shadow-lg pointer-events-auto backdrop-blur-sm">
+            <span class="text-sm font-medium text-gray-300 select-none">確率分布機能</span>
+            <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="featureToggle" class="sr-only peer">
+                <div class="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"></div>
+            </label>
+        </div>
+    </header>
+
+    <main class="flex-grow flex flex-col items-center py-16 relative px-4 w-full">
+        <h1 class="text-3xl sm:text-4xl font-bold mb-6 text-center text-white tracking-wider">
+            さいころ投げシミュレーター
+        </h1>
+
+        <div class="bg-gray-800 p-6 rounded-2xl shadow-xl flex flex-col gap-6 items-center justify-center mb-8 border border-gray-700 w-full max-w-lg">
+            
+            <!-- 設定エリア -->
+            <div class="flex flex-col sm:flex-row gap-6 w-full justify-between items-center">
+                <div class="flex items-center gap-3">
+                    <label class="text-sm font-medium text-gray-300">確率変数:</label>
+                    <div class="flex bg-gray-700 rounded-lg p-1 border border-gray-600">
+                        <label class="cursor-pointer px-4 py-1.5 rounded-md text-sm font-medium transition-colors" id="labelVarSum" style="background-color: #3b82f6; color: white;">
+                            <input type="radio" name="probVar" value="sum" class="hidden" checked> 目の和
+                        </label>
+                        <label class="cursor-pointer px-4 py-1.5 rounded-md text-sm font-medium transition-colors text-gray-300 hover:text-white" id="labelVarProd">
+                            <input type="radio" name="probVar" value="product" class="hidden"> 目の積
+                        </label>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-3">
+                    <label for="diceCount" class="text-sm font-medium text-gray-300">個数:</label>
+                    <select id="diceCount" class="bg-gray-700 text-white text-md rounded-lg px-3 py-1.5 outline-none border border-gray-600 focus:border-blue-400">
+                        <option value="1">1個</option>
+                        <option value="2" selected>2個</option>
+                        <option value="3">3個</option>
+                        <option value="4">4個</option>
+                        <option value="5">5個</option>
+                    </select>
+                </div>
+            </div>
+            
+            <button id="rollBtn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-xl shadow-lg transition-transform transform active:scale-95 text-lg mt-1">
+                投げる
+            </button>
+        </div>
+
+        <div class="mb-6 flex flex-col items-center w-full max-w-2xl">
+            <!-- 結果表示 -->
+            <div class="text-center bg-gray-800 px-8 py-4 rounded-2xl border border-gray-700 min-w-[280px] shadow-lg">
+                <h2 class="text-sm text-gray-400 mb-1 font-semibold tracking-widest">結果</h2>
+                <div class="text-sm text-gray-400 mb-2">出た目: <span id="diceValues" class="text-white">-</span></div>
+                <div class="text-xl font-bold flex justify-center gap-8">
+                    <span class="text-white">
+                        <span id="resultLabel">目の和</span>: <span id="resultValue" class="text-blue-400 text-4xl">-</span>
+                    </span>
+                </div>
+            </div>
+            
+            <div id="distBtnContainer" class="hidden mt-6">
+                <button id="distBtn" class="bg-green-700 hover:bg-green-600 text-white font-bold py-2.5 px-6 rounded-xl shadow-lg transition-transform transform active:scale-95 text-md flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                    </svg>
+                    <span id="distBtnText">確率分布を表示</span>
+                </button>
+            </div>
+
+            <div id="distChartContainer" class="hidden w-full mt-6 bg-gray-800 p-6 rounded-2xl border border-gray-700 shadow-xl fade-in">
+                <h2 class="text-xl font-bold text-white mb-6 text-center">確率変数 X (<span id="chartVarName">目の和</span>) の分布</h2>
+                
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                    <div class="bg-gray-700/50 p-4 rounded-xl border border-gray-600 text-center">
+                        <div class="text-xs text-gray-400 mb-1 font-semibold">期待値 E[X]</div>
+                        <div id="statExpected" class="text-2xl font-bold text-blue-400">-</div>
+                    </div>
+                    <div class="bg-gray-700/50 p-4 rounded-xl border border-gray-600 text-center">
+                        <div class="text-xs text-gray-400 mb-1 font-semibold">分散 V[X]</div>
+                        <div id="statVariance" class="text-2xl font-bold text-green-400">-</div>
+                    </div>
+                    <div class="bg-gray-700/50 p-4 rounded-xl border border-gray-600 text-center">
+                        <div class="text-xs text-gray-400 mb-1 font-semibold">標準偏差 σ[X]</div>
+                        <div id="statStdDev" class="text-2xl font-bold text-yellow-400">-</div>
+                    </div>
+                </div>
+
+                <div class="chart-wrapper">
+                    <canvas id="distChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div id="diceContainer" class="dice-grid pb-12">
+            <!-- さいころはJavaScriptで動的に生成されます -->
+        </div>
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const featureToggle = document.getElementById('featureToggle');
+            const diceCountSelect = document.getElementById('diceCount');
+            const rollBtn = document.getElementById('rollBtn');
+            const distBtnContainer = document.getElementById('distBtnContainer');
+            const distBtn = document.getElementById('distBtn');
+            const distBtnText = document.getElementById('distBtnText');
+            const distChartContainer = document.getElementById('distChartContainer');
+            const diceContainer = document.getElementById('diceContainer');
+            
+            const resultLabel = document.getElementById('resultLabel');
+            const resultValue = document.getElementById('resultValue');
+            const diceValues = document.getElementById('diceValues');
+            
+            const statExpected = document.getElementById('statExpected');
+            const statVariance = document.getElementById('statVariance');
+            const statStdDev = document.getElementById('statStdDev');
+            const chartVarName = document.getElementById('chartVarName');
+            
+            const radios = document.querySelectorAll('input[name="probVar"]');
+            const labelVarSum = document.getElementById('labelVarSum');
+            const labelVarProd = document.getElementById('labelVarProd');
+
+            let isAnimating = false;
+            let chartInstance = null;
+            let rollCompleted = false;
+
+            // 確率変数の切り替えデザイン更新
+            radios.forEach(radio => {
+                radio.addEventListener('change', (e) => {
+                    if (e.target.value === 'sum') {
+                        labelVarSum.style.backgroundColor = '#3b82f6';
+                        labelVarSum.style.color = 'white';
+                        labelVarProd.style.backgroundColor = 'transparent';
+                        labelVarProd.style.color = '#d1d5db';
+                        resultLabel.innerText = "目の和";
+                        chartVarName.innerText = "目の和";
+                    } else {
+                        labelVarProd.style.backgroundColor = '#3b82f6';
+                        labelVarProd.style.color = 'white';
+                        labelVarSum.style.backgroundColor = 'transparent';
+                        labelVarSum.style.color = '#d1d5db';
+                        resultLabel.innerText = "目の積";
+                        chartVarName.innerText = "目の積";
+                    }
+                    if (rollCompleted) calculateAndShowResult();
+                    if (!distChartContainer.classList.contains('hidden')) {
+                        updateDistributionChart();
+                    }
+                });
+            });
+
+            // さいころの目を描画するHTML文字列を生成
+            function getDiceFaceHTML(num) {
+                let html = '';
+                const dotClass = num === 1 ? 'dot red' : 'dot';
+                for(let i=0; i<num; i++) {
+                    html += `<div class="${dotClass}"></div>`;
+                }
+                return `<div class="dice-face face-${num}">${html}</div>`;
+            }
+
+            function createDiceElement() {
+                const scene = document.createElement('div');
+                scene.className = 'dice-scene';
+                
+                const inner = document.createElement('div');
+                inner.className = 'dice-inner';
+                inner.innerHTML = getDiceFaceHTML(6); // 初期値
+                scene.appendChild(inner);
+
+                return scene;
+            }
+
+            function adjustDiceElements(targetCount) {
+                const currentCount = diceContainer.children.length;
+                if (targetCount > currentCount) {
+                    for (let i = 0; i < targetCount - currentCount; i++) {
+                        diceContainer.appendChild(createDiceElement());
+                    }
+                } else if (targetCount < currentCount) {
+                    for (let i = 0; i < currentCount - targetCount; i++) {
+                        diceContainer.removeChild(diceContainer.lastChild);
+                    }
+                }
+            }
+
+            function hideDistributionFeatures() {
+                distBtnContainer.classList.add('hidden');
+                distBtnContainer.classList.remove('fade-in');
+                distChartContainer.classList.add('hidden');
+                distBtnText.innerText = '確率分布を表示';
+            }
+
+            let currentResults = [];
+
+            function calculateAndShowResult() {
+                const isSum = document.querySelector('input[name="probVar"]:checked').value === 'sum';
+                let finalVal = isSum ? 0 : 1;
+                currentResults.forEach(val => {
+                    if (isSum) finalVal += val;
+                    else finalVal *= val;
+                });
+                diceValues.innerText = currentResults.join(', ');
+                resultValue.innerText = finalVal;
+            }
+
+            function rollDices() {
+                if (isAnimating) return;
+                isAnimating = true;
+                rollCompleted = false;
+                
+                hideDistributionFeatures();
+                
+                const count = parseInt(diceCountSelect.value, 10);
+                adjustDiceElements(count);
+
+                resultValue.innerText = "-";
+                diceValues.innerText = "-";
+                resultValue.classList.remove('animate-pulse');
+
+                const dices = diceContainer.querySelectorAll('.dice-inner');
+                currentResults = [];
+                let completedCount = 0;
+
+                dices.forEach((dice, index) => {
+                    // アニメーション用のランダムな目の変更
+                    let rollInterval = setInterval(() => {
+                        dice.innerHTML = getDiceFaceHTML(Math.floor(Math.random() * 6) + 1);
+                    }, 100);
+
+                    dice.classList.remove('is-rolling');
+                    void dice.offsetWidth; 
+                    dice.classList.add('is-rolling');
+
+                    // 各さいころが止まるタイミングを少しずらす
+                    setTimeout(() => {
+                        clearInterval(rollInterval);
+                        const finalNum = Math.floor(Math.random() * 6) + 1;
+                        dice.innerHTML = getDiceFaceHTML(finalNum);
+                        currentResults[index] = finalNum;
+                        completedCount++;
+
+                        if (completedCount === count) {
+                            calculateAndShowResult();
+                            resultValue.classList.add('animate-pulse');
+                            rollCompleted = true;
+                            isAnimating = false;
+
+                            if (featureToggle.checked) {
+                                distBtnContainer.classList.remove('hidden');
+                                distBtnContainer.classList.add('fade-in');
+                            }
+                        }
+                    }, 1500 + (index * 200));
+                });
+            }
+
+            // 理論上の確率分布と統計量を全探索で計算 (n<=5 なので最大 6^5 = 7776通り)
+            function calculateDistribution(n, type) {
+                let counts = {};
+                const totalOutcomes = Math.pow(6, n);
+                
+                function search(depth, currentVal) {
+                    if (depth === n) {
+                        counts[currentVal] = (counts[currentVal] || 0) + 1;
+                        return;
+                    }
+                    for (let i = 1; i <= 6; i++) {
+                        search(depth + 1, type === 'sum' ? currentVal + i : currentVal * i);
+                    }
+                }
+                
+                search(0, type === 'sum' ? 0 : 1);
+                
+                let labels = [];
+                let data = [];
+                let keys = Object.keys(counts).map(Number).sort((a, b) => a - b);
+                
+                let expected = 0;
+                let expectedSq = 0;
+                
+                for (let k of keys) {
+                    let prob = counts[k] / totalOutcomes;
+                    labels.push(k.toString());
+                    data.push(prob);
+                    expected += k * prob;
+                    expectedSq += k * k * prob;
+                }
+                
+                let variance = expectedSq - (expected * expected);
+                let stdDev = Math.sqrt(variance);
+                
+                return { labels, data, expected, variance, stdDev };
+            }
+
+            function updateDistributionChart() {
+                const n = parseInt(diceCountSelect.value, 10);
+                const probVar = document.querySelector('input[name="probVar"]:checked').value;
+                
+                const dist = calculateDistribution(n, probVar);
+                
+                statExpected.innerText = dist.expected.toFixed(3);
+                statVariance.innerText = dist.variance.toFixed(3);
+                statStdDev.innerText = dist.stdDev.toFixed(3);
+                
+                const ctx = document.getElementById('distChart').getContext('2d');
+                
+                if (chartInstance) {
+                    chartInstance.destroy();
+                }
+                
+                Chart.defaults.color = '#9ca3af'; 
+                Chart.defaults.font.family = "'Inter', 'Helvetica Neue', Arial, sans-serif";
+
+                chartInstance = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: dist.labels,
+                        datasets: [{
+                            label: '確率 P(X=k)',
+                            data: dist.data,
+                            backgroundColor: probVar === 'sum' ? 'rgba(59, 130, 246, 0.7)' : 'rgba(16, 185, 129, 0.7)', 
+                            borderColor: probVar === 'sum' ? 'rgba(59, 130, 246, 1)' : 'rgba(16, 185, 129, 1)',
+                            borderWidth: 1,
+                            borderRadius: 3
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: { grid: { display: false } },
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    callback: function(value) { return (value * 100).toFixed(0) + '%'; }
+                                }
+                            }
+                        },
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const pct = (context.parsed.y * 100);
+                                        return '確率: ' + (pct < 0.01 && pct > 0 ? '<0.01%' : pct.toFixed(2) + '%');
+                                    }
+                                }
+                            },
+                            legend: { display: false }
+                        }
+                    }
+                });
+            }
+
+            function toggleDistributionChart() {
+                const isHidden = distChartContainer.classList.contains('hidden');
+                if (isHidden) {
+                    distChartContainer.classList.remove('hidden');
+                    distBtnText.innerText = '確率分布を隠す';
+                    updateDistributionChart();
+                } else {
+                    distChartContainer.classList.add('hidden');
+                    distBtnText.innerText = '確率分布を表示';
+                }
+            }
+
+            featureToggle.addEventListener('change', () => {
+                if (!featureToggle.checked || !rollCompleted) {
+                    hideDistributionFeatures();
+                } else if (featureToggle.checked && rollCompleted) {
+                    distBtnContainer.classList.remove('hidden');
+                    distBtnContainer.classList.add('fade-in');
+                }
+            });
+
+            diceCountSelect.addEventListener('change', () => {
+                if (!isAnimating) {
+                    adjustDiceElements(parseInt(diceCountSelect.value, 10));
+                    resultValue.innerText = "-";
+                    diceValues.innerText = "-";
+                    resultValue.classList.remove('animate-pulse');
+                    rollCompleted = false;
+                    hideDistributionFeatures();
+                }
+            });
+
+            rollBtn.addEventListener('click', rollDices);
+            distBtn.addEventListener('click', toggleDistributionChart);
+
+            // 初期状態で2個表示
+            adjustDiceElements(2);
+        });
+    </script>
+</body>
+</html>
