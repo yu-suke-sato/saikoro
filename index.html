@@ -190,18 +190,18 @@
             <div id="distChartContainer" class="hidden w-full mt-6 bg-gray-800 p-6 rounded-2xl border border-gray-700 shadow-xl fade-in">
                 <h2 class="text-xl font-bold text-white mb-6 text-center">確率変数 X (<span id="chartVarName">目の和</span>) の分布</h2>
                 
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-                    <div class="bg-gray-700/50 p-4 rounded-xl border border-gray-600 text-center">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div class="bg-gray-700/50 p-4 rounded-xl border border-gray-600 flex flex-col items-center justify-center min-h-[90px]">
                         <div class="text-xs text-gray-400 mb-1 font-semibold">期待値 E[X]</div>
-                        <div id="statExpected" class="text-2xl font-bold text-blue-400">-</div>
+                        <div id="statExpected" class="text-base sm:text-lg font-bold text-blue-400 text-center">-</div>
                     </div>
-                    <div class="bg-gray-700/50 p-4 rounded-xl border border-gray-600 text-center">
+                    <div class="bg-gray-700/50 p-4 rounded-xl border border-gray-600 flex flex-col items-center justify-center min-h-[90px]">
                         <div class="text-xs text-gray-400 mb-1 font-semibold">分散 V[X]</div>
-                        <div id="statVariance" class="text-2xl font-bold text-green-400">-</div>
+                        <div id="statVariance" class="text-base sm:text-lg font-bold text-green-400 text-center">-</div>
                     </div>
-                    <div class="bg-gray-700/50 p-4 rounded-xl border border-gray-600 text-center">
+                    <div class="bg-gray-700/50 p-4 rounded-xl border border-gray-600 flex flex-col items-center justify-center min-h-[90px]">
                         <div class="text-xs text-gray-400 mb-1 font-semibold">標準偏差 σ[X]</div>
-                        <div id="statStdDev" class="text-2xl font-bold text-yellow-400">-</div>
+                        <div id="statStdDev" class="text-base sm:text-lg font-bold text-yellow-400 text-center">-</div>
                     </div>
                 </div>
 
@@ -244,7 +244,6 @@
             let chartInstance = null;
             let rollCompleted = false;
 
-            // 確率変数の切り替えデザイン更新
             radios.forEach(radio => {
                 radio.addEventListener('change', (e) => {
                     if (e.target.value === 'sum') {
@@ -269,7 +268,6 @@
                 });
             });
 
-            // さいころの目を描画するHTML文字列を生成
             function getDiceFaceHTML(num) {
                 let html = '';
                 const dotClass = num === 1 ? 'dot red' : 'dot';
@@ -285,7 +283,7 @@
                 
                 const inner = document.createElement('div');
                 inner.className = 'dice-inner';
-                inner.innerHTML = getDiceFaceHTML(6); // 初期値
+                inner.innerHTML = getDiceFaceHTML(6); 
                 scene.appendChild(inner);
 
                 return scene;
@@ -343,7 +341,6 @@
                 let completedCount = 0;
 
                 dices.forEach((dice, index) => {
-                    // アニメーション用のランダムな目の変更
                     let rollInterval = setInterval(() => {
                         dice.innerHTML = getDiceFaceHTML(Math.floor(Math.random() * 6) + 1);
                     }, 100);
@@ -352,7 +349,6 @@
                     void dice.offsetWidth; 
                     dice.classList.add('is-rolling');
 
-                    // 各さいころが止まるタイミングを少しずらす
                     setTimeout(() => {
                         clearInterval(rollInterval);
                         const finalNum = Math.floor(Math.random() * 6) + 1;
@@ -375,11 +371,23 @@
                 });
             }
 
-            // 理論上の確率分布と統計量を全探索で計算 (n<=5 なので最大 6^5 = 7776通り)
+            // --- 数学計算ユーティリティ ---
+            function gcdBigInt(a, b) {
+                a = a < 0n ? -a : a;
+                b = b < 0n ? -b : b;
+                while (b !== 0n) {
+                    let temp = b;
+                    b = a % b;
+                    a = temp;
+                }
+                return a;
+            }
+
             function calculateDistribution(n, type) {
                 let counts = {};
                 const totalOutcomes = Math.pow(6, n);
                 
+                // パターンを全探索
                 function search(depth, currentVal) {
                     if (depth === n) {
                         counts[currentVal] = (counts[currentVal] || 0) + 1;
@@ -396,21 +404,64 @@
                 let data = [];
                 let keys = Object.keys(counts).map(Number).sort((a, b) => a - b);
                 
-                let expected = 0;
-                let expectedSq = 0;
+                // オーバーフロー防止のためBigIntで正確な分子・分母を計算
+                let N_big = BigInt(totalOutcomes);
+                let expNum_big = 0n;
+                let expSqNum_big = 0n;
                 
                 for (let k of keys) {
                     let prob = counts[k] / totalOutcomes;
                     labels.push(k.toString());
                     data.push(prob);
-                    expected += k * prob;
-                    expectedSq += k * k * prob;
+                    
+                    let kBig = BigInt(k);
+                    let cBig = BigInt(counts[k]);
+                    expNum_big += kBig * cBig;
+                    expSqNum_big += kBig * kBig * cBig;
                 }
                 
-                let variance = expectedSq - (expected * expected);
-                let stdDev = Math.sqrt(variance);
+                // ---- 期待値の計算 ----
+                let gE = gcdBigInt(expNum_big, N_big);
+                let expNumRed = expNum_big / gE;
+                let expDenRed = N_big / gE;
+                let expExactStr = expDenRed === 1n ? `${expNumRed}` : `${expNumRed}/${expDenRed}`;
+                let expDec = Number(expNum_big) / Number(N_big);
                 
-                return { labels, data, expected, variance, stdDev };
+                // ---- 分散の計算 V[X] = E[X^2] - (E[X])^2 ----
+                let varNum_big = N_big * expSqNum_big - expNum_big * expNum_big;
+                let varDen_big = N_big * N_big;
+                let gV = gcdBigInt(varNum_big, varDen_big);
+                let varNumRed = varNum_big / gV;
+                let varDenRed = varDen_big / gV;
+                let varExactStr = varDenRed === 1n ? `${varNumRed}` : `${varNumRed}/${varDenRed}`;
+                let varDec = Number(varNum_big) / Number(varDen_big);
+                
+                // ---- 標準偏差の計算 σ = √(分散) ----
+                let stdDevExactStr = "";
+                if (varNumRed === 0n) {
+                    stdDevExactStr = "0";
+                } else if (varDenRed === 1n) {
+                    stdDevExactStr = `√${varNumRed}`;
+                } else {
+                    stdDevExactStr = `√(${varNumRed}/${varDenRed})`;
+                }
+                let stdDevDec = Math.sqrt(varDec);
+
+                // 文字列整形フォーマット（分数表示と数値表示を＝で結ぶ）
+                function formatVal(exact, dec) {
+                    // 整数ならそのまま、小数なら第3位まで
+                    let decStr = Number.isInteger(dec) ? dec.toString() : Number(dec.toFixed(3)).toString();
+                    if (exact === decStr) return exact; // 一致する場合は冗長なので一つだけ表示
+                    return `${exact} = ${decStr}`;
+                }
+
+                return { 
+                    labels, 
+                    data, 
+                    expectedStr: formatVal(expExactStr, expDec), 
+                    varianceStr: formatVal(varExactStr, varDec), 
+                    stdDevStr: formatVal(stdDevExactStr, stdDevDec) 
+                };
             }
 
             function updateDistributionChart() {
@@ -419,9 +470,9 @@
                 
                 const dist = calculateDistribution(n, probVar);
                 
-                statExpected.innerText = dist.expected.toFixed(3);
-                statVariance.innerText = dist.variance.toFixed(3);
-                statStdDev.innerText = dist.stdDev.toFixed(3);
+                statExpected.innerText = dist.expectedStr;
+                statVariance.innerText = dist.varianceStr;
+                statStdDev.innerText = dist.stdDevStr;
                 
                 const ctx = document.getElementById('distChart').getContext('2d');
                 
